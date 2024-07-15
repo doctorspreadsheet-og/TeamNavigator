@@ -74,8 +74,6 @@ stages:
           displayName: Deployment
           pool:
             vmImage: $(vmImageName)
-          variables:
-            - group: '${{stage.k8sNamespace}}_aks_${{stage.stage}}'
           environment: ${{stage.environment}}
           strategy:
             runOnce:
