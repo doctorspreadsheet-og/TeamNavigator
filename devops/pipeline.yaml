@@ -47,7 +47,7 @@ stages:
             containerRegistry: $(dockerRegistryServiceConnection)
             repository: $(imageRepository)
             command: 'buildAndPush'
-            Dockerfile: Docker
+            Dockerfile: Dockerfile
             tags: $(dockerTag)
   - ${{each stage in parameters.deploymentStages}}:
     - stage: 'Deploy_${{stage.stage}}' 
