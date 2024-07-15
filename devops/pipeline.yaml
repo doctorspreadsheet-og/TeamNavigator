@@ -1,0 +1,107 @@
+name: Team Navigator
+
+trigger:
+  branches:
+    include:
+      - master
+
+variables:
+  vmImageName: 'ubuntu-latest'
+  dockerRegistryServiceConnection: 'DockerRegistry'
+  k8sNamespace: 'auxtools'
+  imagePullSecret: 'dev-aks'
+  registry: ringlerregistry.azurecr.io
+  imageRepository: auxtools/teamnavigator
+  dockerTag: $(Build.BuildId)
+
+parameters:
+  - name: deploymentStages
+    type: object
+    default:
+      - stage: 'Dev'
+        displayName: "Deploy Dev"
+        environment: 'Dev-AuxTools-Cluster'
+        k8sNamespace: 'auxtools'
+        imagePullSecret: 'dev-aks'
+        dependsOn: 'Build'
+        pauseForCodeReview: false
+      - stage: 'Prod'
+        displayName: "Deploy Prod"
+        environment: 'Prod-AuxTools-Cluster'
+        k8sNamespace: 'auxtools'
+        imagePullSecret: 'dev-aks'
+        dependsOn: 'Deploy_Dev'
+        pauseForCodeReview: true
+
+
+stages:
+  - stage: Build
+    jobs:
+      - job: Build
+        displayName: 'Build'
+        pool:
+          vmImage: $(vmImageName)
+        steps:
+        - task: Docker@2
+          inputs:
+            containerRegistry: $(dockerRegistryServiceConnection)
+            repository: $(imageRepository)
+            command: 'buildAndPush'
+            Dockerfile: Docker
+            tags: $(dockerTag)
+  - ${{each stage in parameters.deploymentStages}}:
+    - stage: 'Deploy_${{stage.stage}}' 
+      displayName: ${{stage.displayName}}
+      dependsOn: ${{stage.dependsOn}}
+      jobs:
+        - ${{if eq(stage.pauseForCodeReview, true)}}:
+          - job: CodeReview
+            displayName: Code Review
+            pool: server
+            steps:
+              - task: ManualValidation@0
+                displayName: 'Review Change Prior To Release'
+                timeoutInMinutes: 4320 # job times out in 3 days
+                inputs:
+                  notifyUsers: |
+                    'dcrawford@ringlerassociates.com'
+                  instructions: 'Review changes'
+        - ${{if ne(stage.pauseForCodeReview, true)}}:
+            - job: CodeReview
+              displayName: Skipping Code Review
+      
+        - deployment: 
+          displayName: Deployment
+          pool:
+            vmImage: $(vmImageName)
+          variables:
+            - group: '${{stage.k8sNamespace}}_aks_${{stage.stage}}'
+          environment: ${{stage.environment}}
+          strategy:
+            runOnce:
+              deploy:
+                steps:
+                - task: DownloadPipelineArtifact@2
+                  inputs:
+                    artifactName: 'TeamNavigator'
+                    downloadPath: '$(System.ArtifactsDirectory)'
+
+                - task: KubernetesManifest@1
+                  displayName: Create imagePullSecret
+                  inputs:
+                    action: 'createSecret'
+                    kubernetesServiceConnection: ${{stage.environment}}
+                    secretType: 'dockerRegistry'
+                    secretName: '$(imagePullSecret)'
+                    dockerRegistryEndpoint: '$(dockerRegistryServiceConnection)'
+                    
+                - task: KubernetesManifest@1
+                  displayName: Deploy to Kubernetes cluster
+                  inputs:
+                    action: deploy
+                    kubernetesServiceConnection: ${{stage.environment}}
+                    namespace: $(k8sNamespace)
+                    imagePullSecrets: |
+                      $(imagePullSecret)
+                    containers: |
+                      $(containerRegistry)/$(imageRepository):$(dockerTag)
