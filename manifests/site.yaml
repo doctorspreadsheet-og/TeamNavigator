@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: teamnavigator
+  namespace: auxtools
+  labels:
+    app: teamnavigator
+    app.kubernetes.io/area: auxtools
+    app.kubernetes.io/name: teamnavigator
+
+spec:
+  containers:
+  - name: teamnavigator
+    image: ringlerregistry.azurecr.io/{{DOCKER_IMAGE_NAME}}:{{DOCKER_IMAGE_VERSION}}
+    ports:
+      - containerPort: 8501

@@ -49,6 +49,12 @@ stages:
             command: 'buildAndPush'
             Dockerfile: Dockerfile
             tags: $(dockerTag)
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: '$(Build.SourcesDirectory)/manifests'
+            artifact: 'TeamNavigator'
+            publishLocation: 'pipeline'
+
   - ${{each stage in parameters.deploymentStages}}:
     - stage: 'Deploy_${{stage.stage}}' 
       displayName: ${{stage.displayName}}
@@ -79,6 +85,10 @@ stages:
             runOnce:
               deploy:
                 steps:
+                - task: DownloadPipelineArtifact@2
+                  inputs:
+                    artifactName: 'TeamNavigator'
+                    downloadPath: '$(System.ArtifactsDirectory)'
                 - task: KubernetesManifest@1
                   displayName: Create imagePullSecret
                   inputs:
@@ -94,6 +104,8 @@ stages:
                     action: deploy
                     kubernetesServiceConnection: ${{stage.environment}}
                     namespace: $(k8sNamespace)
+                    manifests: |
+                      $(System.ArtifactsDirectory)/site.yaml
                     imagePullSecrets: |
                       $(imagePullSecret)
                     containers: |
